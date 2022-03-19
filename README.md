@@ -18,6 +18,7 @@ The following is a recipe for managing and testing application deployments in di
 - [Earthly](https://earthly.dev/) for reproducible builds
 - [Elixir](https://elixir-lang.org/) and [Phoenix](https://www.phoenixframework.org/) for the demo application
 - [Github Actions](https://github.com/features/actions) to trigger deployments on different branches
+- [Github Container Registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry) to save Docker images
 - [Minikube](https://minikube.sigs.k8s.io/docs/start/) to Kubernetes clusters locally 
 - [Nginx](https://www.nginx.com/) as the reverse proxy
 - [Pulumi](https://www.pulumi.com/) for instrastructure as code
@@ -32,6 +33,20 @@ Start by running `pulumi new kubernetes-typescript` inside your project which wi
 ## Local Deployment
 You might want to call your [Pulumi stack](https://www.pulumi.com/docs/intro/concepts/stack/) something like `local` for this use-case.
 
+By default, kubectl gets configured to access the kubernetes cluster control plane inside minikube when the `minikube start` command is run.
+To resync the kubeconfig setup to connect to minikube, use `minikube update-context`
+
+A `isMinikube` config variable is used to differenriate between local and remote deployments
+`pulumi config set isMinikube false`
+
+### Load Balancer
+The Pulumi docs state that Minikube does not support the `LoadBalancer` service type, but this is no longer true as per [Minikube's docs](https://minikube.sigs.k8s.io/docs/handbook/accessing/#loadbalancer-access)
+However, you must run: `minikube tunnel` before `pulumi up` for the load balancer service-type to work.
+If you run into a problem with the Minikube tunnel, you can use `minikube tunnel --cleanup` to clean up orphaned processes before starting a tnnel.
+Use `kubectl get svc` to get the IP to access the service.
+
+### Clean up
+Use `pulumi destroy` to destroy the cluster and optionally use `pulumi stack rm` to delete the stack history from Pulumi's servers.
 
 ## Production Deployment
 You might want to call your [Pulumi stack](https://www.pulumi.com/docs/intro/concepts/stack/) something like `production` for this use-case.
