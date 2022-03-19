@@ -1,0 +1,6 @@
+node_modules
+
+# Eartly build files
+.tmp* 
+
+.DS_Store
