@@ -1,5 +1,6 @@
 # A Flexible Recipe for Deployment to Multiple Environments Using Pulumi, Kubernetes and Github Actions
 The following is a recipe for managing and testing application deployments in different environments (local, staging, feature branch). 
+Inspired by [Basecamp's approach](https://m.signalvnoise.com/seamless-branch-deploys-with-kubernetes/).
 
 ## Key Features
 - Local deployment recipe
