@@ -39,7 +39,25 @@ To resync the kubeconfig setup to connect to minikube, use `minikube update-cont
 A `isMinikube` config variable is used to differenriate between local and remote deployments
 `pulumi config set isMinikube false`
 
-### Load Balancer
+### Ingress
+If you plan to use an Ingress resource and want to test in Ingress, you'll want to follow the Minikube steps [here](https://minikube.sigs.k8s.io/docs/handbook/addons/ingress-dns/).
+The steps are:
+1. `minikube start`
+2. `minikube addons enable ingress`
+3. `minikube addons enable ingress-dns`
+4. `minikube ip` -> copy this IP
+5. `sudo mkdir /etc/resolver` on Mac
+5. `sudo vim /etc/resolver/minikube-test` or `sudo nano /etc/resolver/minikube-test` or other
+6. Write the following inside the `minikube-test` file:
+```
+domain test
+nameserver PUT-MINIKUBE-IP-HERE
+search_order 1
+timeout 5
+```
+
+
+### Note on Load Balancer
 The Pulumi docs state that Minikube does not support the `LoadBalancer` service type, but this is no longer true as per [Minikube's docs](https://minikube.sigs.k8s.io/docs/handbook/accessing/#loadbalancer-access)
 However, you must run: `minikube tunnel` before `pulumi up` for the load balancer service-type to work.
 If you run into a problem with the Minikube tunnel, you can use `minikube tunnel --cleanup` to clean up orphaned processes before starting a tnnel.

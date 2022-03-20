@@ -1,37 +1,112 @@
 import * as pulumi from "@pulumi/pulumi";
 import * as k8s from "@pulumi/kubernetes";
 
-// Minikube does not implement services of type `LoadBalancer`; require the user to specify if we're
-// running on minikube, and if so, create only services of type ClusterIP.
+const appNamespace = (s: string) => "demo-" + s;
 const config = new pulumi.Config();
+const cloudflareConfig = new pulumi.Config("cloudflare");
 const isMinikube = config.requireBoolean("isMinikube");
 
-const appName = "nginx";
-const appLabels = { app: appName };
-const deployment = new k8s.apps.v1.Deployment(appName, {
-    spec: {
-        selector: { matchLabels: appLabels },
-        replicas: 1,
-        template: {
-            metadata: { labels: appLabels },
-            spec: { containers: [{ name: appName, image: "nginx" }] }
-        }
-    }
-});
+// Postgres
+// Redis
+const provider = new k8s.Provider(appNamespace("k8s"));
 
-// Allocate an IP to the Deployment.
-const frontend = new k8s.core.v1.Service(appName, {
-    metadata: { labels: deployment.spec.template.metadata.labels },
-    spec: {
-        type: isMinikube ? "ClusterIP" : "LoadBalancer",
-        ports: [{ port: 80, targetPort: 80, protocol: "TCP" }],
-        selector: appLabels
-    }
-});
+//
+// CERT MANAGEMENT
+//
+if (!isMinikube) {
+  const cloudflareApiToken = cloudflareConfig.require("apiToken");
+  const certManagerNamespace = "cert-manager";
+  const certManager = new k8s.yaml.ConfigFile(
+    appNamespace("cert-manager"),
+    {
+      file: "https://github.com/jetstack/cert-manager/releases/download/v1.2.0/cert-manager.yaml",
+    },
+    { provider }
+  );
 
-// When "done", this will print the public IP.
-export const ip = isMinikube
-    ? frontend.spec.clusterIP
-    : frontend.status.loadBalancer.apply(
-          (lb) => lb.ingress[0].ip || lb.ingress[0].hostname
-      );
+  const dnsSecret = new k8s.core.v1.Secret(
+    "cloudflare-api-token-secret",
+    {
+      metadata: {
+        name: "cloudflare-api-token-secret",
+        namespace: certManagerNamespace,
+      },
+      stringData: {
+        apiToken: cloudflareApiToken,
+      },
+      type: "opaque",
+    },
+    {
+      provider,
+    }
+  );
+
+  // name: letsencrypt-prod
+  const certManagerIssuer = new k8s.yaml.ConfigFile(
+    appNamespace("cert-issuer"),
+    {
+      file: "certIssuer.yaml",
+    },
+    { provider, dependsOn: certManager }
+  );
+}
+
+//
+// Postgres
+//
+
+
+//
+// Redis
+//
+
+//
+// App
+//
+
+//
+// Ingress
+//
+// Deploy the NGINX ingress controller using the Helm chart.
+// Create Kubernetes namespaces.
+const nginxName = "ingress-nginx";
+const nginxNamespace = new k8s.core.v1.Namespace(
+  nginxName,
+  { metadata: { name: nginxName } },
+  { provider }
+);
+const nginxIngressRelease = new k8s.helm.v3.Release(
+  nginxName,
+  {
+    chart: nginxName,
+    repositoryOpts: {
+      repo: "https://kubernetes.github.io/ingress-nginx",
+    },
+    namespace: nginxNamespace.metadata.name,
+    values: {
+      controller: {
+        config: {
+          "use-forwarded-headers": true,
+        },
+        publishService: { enabled: true },
+      },
+    },
+  },
+  { provider }
+);
+
+const nginxSrv = k8s.core.v1.Service.get(
+  nginxName,
+  pulumi.interpolate`${nginxIngressRelease.status.namespace}/${nginxIngressRelease.status.name}-controller`
+);
+export const appIp = nginxSrv.status.loadBalancer.ingress[0].ip;
+
+// export const appIp = nginxIngress.getResourceProperty('v1/Service', nginxName, 'ingress-nginx-controller', 'status')
+//     .apply(status => {
+//         return status.loadBalancer.ingress[0].ip
+//     });
+
+
+//
+// DNS
+//
