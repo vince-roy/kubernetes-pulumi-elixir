@@ -1,0 +1,71 @@
+test-and-build:
+  BUILD +dependencies
+  BUILD +test
+  BUILD +release
+  BUILD +docker
+
+dependencies:
+  ARG ELIXIR=1.13.3
+  ARG OTP=24.3.1
+  FROM hexpm/elixir:$ELIXIR-erlang-$OTP-alpine-3.15.0
+  RUN apk add --no-progress --update git build-base python3
+  ENV ELIXIR_ASSERT_TIMEOUT=10000
+  ARG GITHUB_REPO
+  WORKDIR /src
+  COPY mix.exs .
+  COPY mix.lock .
+  COPY .formatter.exs .
+  RUN mix local.rebar --force
+  RUN mix local.hex --force
+  RUN mix deps.get --only prod,test
+
+
+test:
+  FROM +dependencies
+  RUN apk add --no-progress --update docker docker-compose
+  # Install tooling needed to check if the DBs are actually up when performing integration tests
+  RUN apk add bash postgresql-client chromium chromium-chromedriver
+  RUN MIX_ENV=test mix deps.get
+  RUN MIX_ENV=test mix deps.compile
+  COPY ./docker-compose.yml ./docker-compose.yml
+  COPY --dir config lib priv test .
+
+  # Compiling here improves caching, but slows down GHA speed
+  # Removing until this feature exists https://github.com/earthly/earthly/issues/574
+  # RUN MIX_ENV=test mix deps.compile
+
+  WITH DOCKER
+      # Start docker compose
+      # In parallel start compiling tests
+      # Check for DB to be up x 3
+      # Run the database tests
+      RUN docker-compose up -d & \
+          while ! pg_isready --host=localhost --port=5432 --quiet; do sleep 1; done; \
+          DATABASE_URL="ecto://postgres:postgres@localhost/test" REDIS_URL="redis://localhost:6379/" \
+          SECRET_KEY_BASE="123456789101112131415161718192021222324" \
+          mix test
+  END
+
+release: 
+  FROM +test
+  ARG GITHUB_REPO
+  ENV MIX_ENV=prod
+  ENV SECRET_KEY_BASE="123456789"
+  ENV DISABLE_ECTO_REPO="1"
+  COPY --dir priv/static priv/
+  RUN mix do compile, release
+  SAVE ARTIFACT /src/_build/prod/rel/demo_elixir /app/_build/prod/rel/demo_elixir AS LOCAL release
+
+docker: 
+  FROM alpine:3.15
+  RUN apk update && \
+    apk add --no-cache openssl nodejs ncurses-libs libgcc libstdc++
+  WORKDIR /app
+  RUN chown nobody:nobody /app
+  USER nobody:nobody
+  COPY +release/app/_build/prod/rel/demo_elixir .
+  ENV HOME=/app
+  ENV NODE_ENV=production
+  CMD bin/demo_elixir eval "DemoElixir.Release.migrate" && bin/demo_elixir start
+  ARG DOCKER_IMAGE_NAME
+  SAVE IMAGE --push $DOCKER_IMAGE_NAME
