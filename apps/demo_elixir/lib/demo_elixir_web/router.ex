@@ -1,6 +1,8 @@
 defmodule DemoElixirWeb.Router do
   use DemoElixirWeb, :router
 
+  get "/_k8s/*path", DemoElixirWeb.Plug.Health, []
+
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
