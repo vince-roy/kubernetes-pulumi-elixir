@@ -1,9 +1,4 @@
 config:
-  aws-native:accessKey:
-    secure: AAABAJvZcaoS53sRHbFPRC4BkoBs3mKfy3cgHM4e9F3Qkc4S6kfq0e+8ChVYxkIuKvM5Ng==
-  aws-native:region: us-east-1
-  aws-native:secretKey:
-    secure: AAABAE0Vx9XZtBvY77FdIzoyqgLbakwmd53RRkuTxiySaU3Q2oG4nKXA6nXFBTMcbPkzNm+nCf90NfmNqDMnFxB1ZDDZE6m0
   project-name:appSecretKeyBase:
     secure: AAABAO8EW3MJ0FOSZqJsPeIkyV0sJ64HXBqz11bxFfT2z6m1si9dNevHCgz/NPN4IcNU0Q+rMKxb5GpwNYnl8osQ86jkldUHgRyotvkuVMYTVuTDniKSIEqEQw3FQGkL
   project-name:isMinikube: "true"

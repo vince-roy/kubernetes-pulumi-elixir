@@ -66,6 +66,13 @@ However, you must run: `minikube tunnel` before `pulumi up` for the load balance
 If you run into a problem with the Minikube tunnel, you can use `minikube tunnel --cleanup` to clean up orphaned processes before starting a tnnel.
 Use `kubectl get svc` to get the IP to access the service.
 
+If you run into an issue similar to: 
+```
+Post "https://ingress-nginx-controller-admission.ingress-nginx.svc:443/networking/v1/ingresses?timeout=10s": x509: certificate signed by unknown authority
+```
+then you can run `kubectl get -A ValidatingWebhookConfiguration` to find the webhook validation to delete followed by:
+`kubectl delete -A ValidatingWebhookConfiguration ingress-nginx-admission`. Running `pulumi up` after deleting this resource should work correctly.
+
 ### Clean up
 Use `pulumi destroy` to destroy the cluster and optionally use `pulumi stack rm` to delete the stack history from Pulumi's servers.
 
