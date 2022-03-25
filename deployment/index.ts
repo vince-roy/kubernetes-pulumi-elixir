@@ -1,16 +1,23 @@
-import * as pulumi from "@pulumi/pulumi";
+import * as eks from "@pulumi/eks";
 import * as k8s from "@pulumi/kubernetes";
+import * as pulumi from "@pulumi/pulumi";
 import { deploymentElixir } from './recipes/deploymentElixir'
 import { helmPostgres } from "./recipes/helmPostgres";
 import { ingressApp } from "./recipes/ingressApp";
 import { certManagerWithCloudflare } from "./recipes/certManagerWithCloudflare";
 import { ingressNginx } from "./recipes/ingressNginx";
 
+enum platformTypes {
+  aws = "aws",
+  minikube = "minikube"
+}
+
 const appConfig = new pulumi.Config();
 const appReplicaCount = parseInt(appConfig.get("appReplicaCount") || "1");
 const cloudflareConfig = new pulumi.Config("cloudflare");
+const clusterName = "demo-k8s"
 const domain = process.env.DOMAIN || appConfig.get("domain") || "localhost";
-const isMinikube = appConfig.requireBoolean("isMinikube");
+const platformType : platformTypes = appConfig.require("platformType")
 const mainAppImageName = process.env.DOCKER_IMAGE_NAME || appConfig.get('dockerImageName');
 const passwordPostgres = appConfig.requireSecret("passwordPostgres");
 const passwordRedis = appConfig.requireSecret("passwordRedis");
@@ -19,7 +26,26 @@ const appSecretKeyBase = appConfig.requireSecret("appSecretKeyBase");
 const subdomain = process.env.SUBDOMAIN || appConfig.get("subdomain") || "";
 
 const hostname = subdomain ? subdomain + "." + domain : domain;
-const provider = new k8s.Provider("k8s");
+const isMinikube = platformType !== platformTypes.minikube
+
+const provider = (() => {
+  switch (platformType) {
+    case platformTypes.minikube:
+      return new k8s.Provider(clusterName);
+    case platformTypes.aws:
+      return new eks.Cluster(clusterName, {
+        instanceType: "t2.medium",
+        desiredCapacity: 2,
+        minSize: 1,
+        maxSize: 2,
+      }).provider;
+    default: 
+      throw new Error("Unknown Platform Type")
+  }
+})()
+
+
+
 const tlsSecretName = "tls-cert";
 
 if (!mainAppImageName) {
@@ -31,7 +57,6 @@ if (!mainAppImageName) {
 //
 if (!isMinikube) {
   const cloudflareApiToken = cloudflareConfig.require("apiToken");
-  const certManagerNamespace = "cert-manager";
   certManagerWithCloudflare({
     cloudflareApiToken,
     name: 'cert-manager',
@@ -99,7 +124,7 @@ const appSecrets = new k8s.core.v1.Secret(
 
 const app = deploymentElixir({
   dockerImage: mainAppImageName,
-  imagePullPolicy: isMinikube ? "Never" : "Always",
+  imagePullPolicy: platformType !== platformTypes.minikube ? "Never" : "Always",
   name: 'main-app',
   provider: provider,
   replicaCount: appReplicaCount,
@@ -132,7 +157,6 @@ const appService = new k8s.core.v1.Service(
 // Ingress
 //
 const nginxName = "ingress-nginx";
-console.log(isMinikube, "HERE")
 const nginxIngressRelease = ingressNginx({
   disableAdmissionWebhooks: isMinikube,
   name: nginxName,
