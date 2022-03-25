@@ -1,5 +1,6 @@
 #
-# Earthfile to deploy an app using Pulumi and a Docker image
+# Earthfile to deploy an app using Pulumi and a Docker Image.
+# Used to deploy in CI environments like Github Actions
 #
 
 deploy:

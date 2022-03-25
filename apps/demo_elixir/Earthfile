@@ -66,6 +66,7 @@ docker:
   COPY +release/app/_build/prod/rel/demo_elixir .
   ENV HOME=/app
   ENV NODE_ENV=production
+  ENV PHX_SERVER=true
   CMD bin/demo_elixir eval "DemoElixir.Release.migrate" && bin/demo_elixir start
   ARG DOCKER_IMAGE_NAME
   SAVE IMAGE --push $DOCKER_IMAGE_NAME
