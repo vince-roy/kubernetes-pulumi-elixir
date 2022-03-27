@@ -1,2 +1,5 @@
 /bin/
 /node_modules/
+
+Pulumi.aws.yaml
+!./Pulumi.local.yaml

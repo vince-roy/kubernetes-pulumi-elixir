@@ -76,6 +76,11 @@ then you can run `kubectl get -A ValidatingWebhookConfiguration` to find the web
 ### Clean up
 Use `pulumi destroy` to destroy the cluster and optionally use `pulumi stack rm` to delete the stack history from Pulumi's servers.
 
+## Github Actions
+In order to retrieve your package from the `Github Container Registry` inside the included Github Actions file (`ci.yml`) in this repo, you'll need to ensure your repo is connected to your package:
+https://docs.github.com/en/packages/managing-github-packages-using-github-actions-workflows/publishing-and-installing-a-package-with-github-actions#upgrading-a-workflow-that-accesses-ghcrio
+
+
 ## Production Deployment
 You might want to call your [Pulumi stack](https://www.pulumi.com/docs/intro/concepts/stack/) something like `production` for this use-case.
 

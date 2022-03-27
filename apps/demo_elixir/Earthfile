@@ -2,11 +2,16 @@ test-and-build:
   BUILD +dependencies
   BUILD +test
   BUILD +release
-  BUILD +docker
+  BUILD +docker 
+
+build:
+  BUILD +dependencies
+  BUILD +release
+  BUILD +docker 
 
 dependencies:
   ARG ELIXIR=1.13.3
-  ARG OTP=24.3.1
+  ARG OTP=23.3.4.12
   FROM hexpm/elixir:$ELIXIR-erlang-$OTP-alpine-3.15.0
   RUN apk add --no-progress --update git build-base python3
   ENV ELIXIR_ASSERT_TIMEOUT=10000
@@ -19,16 +24,18 @@ dependencies:
   RUN mix local.hex --force
   RUN mix deps.get --only prod,test
 
+app:
+  FROM +dependencies 
+  COPY --dir config lib priv test .
 
 test:
-  FROM +dependencies
+  FROM +app
   RUN apk add --no-progress --update docker docker-compose
   # Install tooling needed to check if the DBs are actually up when performing integration tests
   RUN apk add bash postgresql-client chromium chromium-chromedriver
   RUN MIX_ENV=test mix deps.get
   RUN MIX_ENV=test mix deps.compile
   COPY ./docker-compose.yml ./docker-compose.yml
-  COPY --dir config lib priv test .
 
   # Compiling here improves caching, but slows down GHA speed
   # Removing until this feature exists https://github.com/earthly/earthly/issues/574
@@ -47,7 +54,7 @@ test:
   END
 
 release: 
-  FROM +test
+  FROM +app
   ARG GITHUB_REPO
   ENV MIX_ENV=prod
   ENV SECRET_KEY_BASE="123456789"

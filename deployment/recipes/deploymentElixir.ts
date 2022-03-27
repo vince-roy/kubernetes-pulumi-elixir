@@ -13,6 +13,7 @@ type AppArguments = {
 
 export const deploymentElixir = (args: AppArguments) => {
     const labels = {app: args.name}
+
     return  new k8s.apps.v1.Deployment(
     args.name,
     {
@@ -71,12 +72,12 @@ export const deploymentElixir = (args: AppArguments) => {
               },
             ],
             imagePullSecrets: args.secretsImagePullName
-              ? []
-              : [
+              ? [
                   {
                     name: args.secretsImagePullName!
                   },
-                ],
+                ]
+              : []
           },
         },
       },

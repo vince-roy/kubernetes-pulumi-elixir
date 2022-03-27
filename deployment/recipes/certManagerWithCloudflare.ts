@@ -1,5 +1,6 @@
 import * as k8s from "@pulumi/kubernetes";
 import { Output, ProviderResource } from "@pulumi/pulumi";
+import path = require("path");
 
 type ArgsCertManagerWithCloudflare = {
     cloudflareApiToken: string,
@@ -35,9 +36,9 @@ export const certManagerWithCloudflare = (args: ArgsCertManagerWithCloudflare) =
     
       // name: letsencrypt-prod
       const certManagerIssuer = new k8s.yaml.ConfigFile(
-        args.name,
+        "issuer- " + args.name,
         {
-          file: "certIssuer.yaml",
+          file: path.resolve(__dirname, "./certIssuer.yaml"),
         },
         { provider: args.provider, dependsOn: certManager }
       );

@@ -6,4 +6,5 @@ config:
     secure: AAABABqrwiYhEzEa8ebSIvzCiMcwzISiWQP01rBg/O9E59Lxre8Q2g==
   project-name:passwordRedis:
     secure: AAABAPqdiEPXDcBkEET9q9GXF6rrQcQnGXgq4ZIWOxVOH78VGQ==
+  project-name:platformType: minikube
   project-name:postgresDatabaseName: demo

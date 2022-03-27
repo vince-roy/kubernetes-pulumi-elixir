@@ -1,3 +1,5 @@
+import * as awsx from "@pulumi/awsx";
+import * as cloudflare from '@pulumi/cloudflare'
 import * as eks from "@pulumi/eks";
 import * as k8s from "@pulumi/kubernetes";
 import * as pulumi from "@pulumi/pulumi";
@@ -25,27 +27,36 @@ const postgresDatabaseName = appConfig.require("postgresDatabaseName");
 const appSecretKeyBase = appConfig.requireSecret("appSecretKeyBase");
 const subdomain = process.env.SUBDOMAIN || appConfig.get("subdomain") || "";
 
+const dockerAuth = Buffer.from(process.env.DOCKER_USERNAME + ":" + process.env.DOCKER_PASSWORD).toString('base64')
+const dockerAuthDomain = process.env.DOCKER_AUTH_DOMAIN || "ghcr.io"
+
 const hostname = subdomain ? subdomain + "." + domain : domain;
-const isMinikube = platformType !== platformTypes.minikube
+const isMinikube = platformType === platformTypes.minikube
 
 const provider = (() => {
   switch (platformType) {
     case platformTypes.minikube:
       return new k8s.Provider(clusterName);
     case platformTypes.aws:
+      // Create a VPC for our cluster due to https://github.com/pulumi/pulumi-eks/issues/95
+      const vpc = new awsx.ec2.Vpc("vpc", {
+        numberOfAvailabilityZones: 2
+      });
+      // careful when changing this after deploy: https://github.com/pulumi/pulumi-eks/issues/178 
       return new eks.Cluster(clusterName, {
-        instanceType: "t2.medium",
         desiredCapacity: 2,
-        minSize: 1,
+        instanceType: "t3.small", 
         maxSize: 2,
+        minSize: 1,
+        nodeAssociatePublicIpAddress: false,
+        privateSubnetIds: vpc.privateSubnetIds,
+        publicSubnetIds: vpc.publicSubnetIds,
+        vpcId: vpc.id,
       }).provider;
     default: 
       throw new Error("Unknown Platform Type")
   }
 })()
-
-
-
 const tlsSecretName = "tls-cert";
 
 if (!mainAppImageName) {
@@ -86,17 +97,15 @@ helmPostgres({
 //
 // App
 //
-const imagePullSecrets = isMinikube
-  ? null
-  : new k8s.core.v1.Secret(
-      "ghcr",
+const imagePullSecrets = new k8s.core.v1.Secret(
+      "docker",
       {
         metadata: {
-          name: "ghcr-secret",
+          name: "docker-secret",
         },
         type: "kubernetes.io/dockerconfigjson",
         stringData: {
-          ".dockerconfigjson": `{"auths":{"https://ghcr.io":{"auth":"${process.env.DOCKER_AUTH_BASE64}"}}}`,
+          ".dockerconfigjson": `{"auths":{"${dockerAuthDomain}":{"auth":"${dockerAuth}"}}}`,
         },
       },
       {
@@ -124,7 +133,7 @@ const appSecrets = new k8s.core.v1.Secret(
 
 const app = deploymentElixir({
   dockerImage: mainAppImageName,
-  imagePullPolicy: platformType !== platformTypes.minikube ? "Never" : "Always",
+  imagePullPolicy: "Always",
   name: 'main-app',
   provider: provider,
   replicaCount: appReplicaCount,
@@ -177,9 +186,29 @@ const nginxSrv = k8s.core.v1.Service.get(
   nginxName,
   pulumi.interpolate`${nginxIngressRelease.status.namespace}/${nginxIngressRelease.status.name}-controller`
 );
-export const appIp = nginxSrv.status.loadBalancer.ingress[0].ip;
-
+export const appHostname = nginxSrv.status.loadBalancer.ingress[0].hostname;
 
 // 
 // DNS
 //
+if (!isMinikube) {
+  if (domain === 'localhost') throw new Error('Domain should not be localhost')
+  const cloudflareZone = cloudflare.getZones({
+    filter: {
+        name: domain,
+    }
+  })
+
+  const site = new cloudflare.Record(
+    hostname,
+    {
+      zoneId: cloudflareZone.then(z => {
+          return z.zones[0].id!
+      }),
+      name: subdomain,
+      value: appHostname,
+      type: "CNAME",
+      proxied: true
+  }
+);
+}
