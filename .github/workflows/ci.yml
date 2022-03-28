@@ -1,0 +1,66 @@
+name: CI AWS
+# on:
+#   push:
+#     branches: [ main ]
+#   pull_request:
+#     branches: [ main ]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      GHCR_USERNAME: ${{ github.actor }}
+      GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      FORCE_COLOR: 1
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set environment for branch
+        run: |
+          if [[ $GITHUB_REF_NAME == 'release' ]] || [[ $GITHUB_REF_NAME == 'beta' ]]; then
+              echo "PASSWORD_POSTGRES=${{secrets.PASSWORD_POSTGRES_PRODUCTION}}" >> "$GITHUB_ENV"
+              echo "PASSWORD_REDIS=${{secrets.PASSWORD_REDIS_PRODUCTION}}" >> "$GITHUB_ENV"
+          else
+              echo "PASSWORD_POSTGRES=${{secrets.PASSWORD_POSTGRES_STAGING}}" >> "$GITHUB_ENV"
+              echo "PASSWORD_REDIS=${{secrets.PASSWORD_REDIS_STAGING}}" >> "$GITHUB_ENV"
+          fi
+      - name: Put back the git branch into git (Earthly uses it for tagging)
+        run: |
+          branch=""
+          if [ -n "$GITHUB_HEAD_REF" ]; then
+            branch="$GITHUB_HEAD_REF"
+          else
+            branch="${GITHUB_REF##*/}"
+          fi
+          git checkout -b "$branch" || true
+      - name: Docker Login
+        run: docker login https://ghcr.io --username "$GHCR_USERNAME" --password "$GHCR_TOKEN"
+      - name: Download latest earthly
+        run: "sudo /bin/sh -c 'wget https://github.com/earthly/earthly/releases/latest/download/earthly-linux-amd64 -O /usr/local/bin/earthly && chmod +x /usr/local/bin/earthly'"
+      - name: Run test and build
+        working-directory: ./apps/demo_elixir
+        run: |
+          earthly -P --build-arg GITHUB_SHA=${{ github.sha }} \
+          --secret PULUMI_TOKEN=${{ secrets.PULUMI_TOKEN }} \
+          --build-arg PULUMI_STACK=${{ GITHUB_REF_NAME }} \
+          --build-arg DOCKER_IMAGE_NAME="ghcr.io/${{ github.repository }}:${{github.sha}}" \
+          --push +test-and-build
+      # has to be separate step otherwise the image won't be accessible
+      - name: Run deploy
+        run: |
+          earthly -P --ci --build-arg GITHUB_SHA=${{ github.sha }} \
+          --build-arg DOCKER_IMAGE_NAME="ghcr.io/${{ github.repository }}:${{github.sha}}" \
+          --build-arg DOMAIN=${{ secrets.DOMAIN }} \
+          --build-arg GITHUB_REPO=${{ github.repository }} \
+          --build-arg PULUMI_STACK=${{ GITHUB_REF_NAME }} \
+          --build-arg SUBDOMAIN=${{GITHUB_REF_NAME}} \
+          --secret CLOUDFLARE_TOKEN=${{ secrets.CLOUDFLARE_TOKEN }} \
+          --secret DEPLOYMENT_KEY=${{ secrets.DEPLYOMENT_KEY }} \
+          --secret DEPLOYMENT_SECRET=${{ secrets.DEPLYOMENT_SECRET }} 
+          --secret DOCKER_PASSWORD=$GHCR_TOKEN \
+          --secret DOCKER_USERNAME=$GHCR_USERNAME \
+          --secret PASSWORD_POSTGRES=$PASSWORD_POSTGRES
+          --secret PASSWORD_REDIS=$PASSWORD_REDIS
+          --secret PLATFORM_TYPE=${{ secrets.PLATFORM_TYPE }}
+          --secret POSTGRES_DATABASE_NAME=${{ secrets.POSTGRES_DATABASE_NAME }}
+          --secret PULUMI_TOKEN=${{ secrets.PULUMI_TOKEN }} \
+          --secret REGION=${{ secrets.REGION }} \
+          +deploy
